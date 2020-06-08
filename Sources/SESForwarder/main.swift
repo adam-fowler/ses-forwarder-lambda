@@ -3,6 +3,7 @@ import AWSLambdaEvents
 import AWSLambdaRuntime
 import AWSS3
 import AWSSES
+import AWSSNS
 import Foundation
 import NIO
 
@@ -39,11 +40,13 @@ class SESForwarderHandler: EventLoopLambdaHandler {
     let httpClient: HTTPClient
     let s3: AWSS3.S3
     let ses: AWSSES.SES
+    let sns: AWSSNS.SNS
 
     init(eventLoop: EventLoop) {
         self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoop))
-        self.s3 = .init(region: .euwest1, httpClientProvider: .shared(self.httpClient))
-        self.ses = .init(region: .euwest1, httpClientProvider: .shared(self.httpClient))
+        self.s3 = .init(region: Region(rawValue: Lambda.env("AWS_DEFAULT_REGION")!), httpClientProvider: .shared(self.httpClient))
+        self.ses = .init(httpClientProvider: .shared(self.httpClient))
+        self.sns = .init(httpClientProvider: .shared(self.httpClient))
     }
     
     deinit {
@@ -153,6 +156,28 @@ class SESForwarderHandler: EventLoopLambdaHandler {
         return ses.sendRawEmail(request).map { _ in }
     }
     
+    /// Report any errors to an SNS topic
+    /// - Parameters:
+    ///   - error: error
+    ///   - message: SES message being processed
+    ///   - context: lambda context
+    /// - Returns: EventLoopFuture
+    func reportError(_ error: Swift.Error, message: SES.Message, context: Lambda.Context) -> EventLoopFuture<Void> {
+        guard let topicArn = Configuration.snsTopicArn else { return context.eventLoop.makeFailedFuture(error) }
+        let message = [
+            "error": "\(error)",
+            "message_id": message.mail.messageId
+        ]
+        guard let jsonData = try? JSONEncoder().encode(message) else { return context.eventLoop.makeFailedFuture(error) }
+        let jsonString = String(decoding: jsonData, as: Unicode.UTF8.self)
+        
+        let request = AWSSNS.SNS.PublishInput(message: jsonString, subject: "SES forwarder error", topicArn: topicArn)
+        return sns.publish(request).flatMapErrorThrowing {
+            error in throw error
+        }
+        .map { _ in }
+    }
+    
     /// handle one message
     /// - Parameters:
     ///   - context: Lambda context
@@ -162,19 +187,24 @@ class SESForwarderHandler: EventLoopLambdaHandler {
         let recipients = getRecipients(message: message)
         guard recipients.count > 0 else { return context.eventLoop.makeSucceededFuture(())}
         
+        context.logger.info("Fetch email with message id \(message.mail.messageId)")
         return fetchEmailContents(messageId: message.mail.messageId)
             .flatMapThrowing { email in
                 return try self.processEmail(email: email)
         }
-        .flatMap { email in
+        .flatMap { email -> EventLoopFuture<Void> in
+            context.logger.info("Send email to \(recipients)")
             return self.sendEmail(data: email, from: Configuration.fromAddress, recipients: recipients)
         }
         .map { _ in }
+        .flatMapError { error in
+            return self.reportError(error, message: message, context: context)
+        }
     }
     
     /// Called by Lambda run. Calls handle message for each message in the supplied payload
     func handle(context: Lambda.Context, payload: In) -> EventLoopFuture<Void> {
         let returnFutures: [EventLoopFuture<Void>] = payload.records.map { return handleMessage(context: context, message: $0.ses) }
-        return EventLoopFuture.whenAllComplete(returnFutures, on: context.eventLoop).map { _ in }
+        return EventLoopFuture.whenAllSucceed(returnFutures, on: context.eventLoop).map { _ in }
     }
 }

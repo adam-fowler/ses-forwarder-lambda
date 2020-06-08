@@ -20,8 +20,9 @@ let package = Package(
             .product(name: "AWSLambdaRuntime", package: "swift-aws-lambda-runtime"),
             .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-runtime"),
             .product(name: "AsyncHTTPClient", package: "async-http-client"),
+            .product(name: "AWSS3", package: "aws-sdk-swift"),
             .product(name: "AWSSES", package: "aws-sdk-swift"),
-            .product(name: "AWSS3", package: "aws-sdk-swift")
+            .product(name: "AWSSNS", package: "aws-sdk-swift")
         ])
     ]
 )
