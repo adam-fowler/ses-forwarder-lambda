@@ -1,5 +1,8 @@
 #!/bin/bash
 
-cd $(dirname $0)
+here=$(dirname $0)
 
-docker build -t swift-lambda-builder .
+echo "-------------------------------------------------------------------------"
+echo "building docker image swift-lambda-builder"
+echo "-------------------------------------------------------------------------"
+docker build -t swift-lambda-builder $here

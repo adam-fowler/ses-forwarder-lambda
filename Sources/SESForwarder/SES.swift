@@ -48,6 +48,7 @@ public enum SES {
     }
     
     public struct CommonHeaders: Decodable {
+        // TODO: add HTML Header date formatter
         //public let date: Date
         public let from: [String]
         public let messageId: String
