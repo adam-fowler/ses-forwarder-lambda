@@ -1,0 +1,35 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "logs:CreateLogGroup",
+            "Resource": "arn:aws:logs:<region>:<accesskeyid>:*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:<region>:<accesskeyid>:log-group:/aws/lambda/swift-ses-forwarder:*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": "ses:SendRawEmail",
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "sns:Publish",
+            "Resource": "arn:aws:sns:<region>:<accesskeyid>:<sns-topic>"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::<s3bucket>/<s3folderprefix>/*"
+        }
+    ]
+}
