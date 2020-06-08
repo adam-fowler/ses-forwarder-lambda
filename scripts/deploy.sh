@@ -16,7 +16,7 @@
 set -eu
 
 # Lambda Function name
-function_name=ses-forwarder
+function_name=swift-ses-forwarder
 executable_name=SESForwarder
 role_name="${function_name}-lamba-role"
 
@@ -40,6 +40,6 @@ else
     echo "-------------------------------------------------------------------------"
     echo "creating lambda \"$function_name\""
     echo "-------------------------------------------------------------------------"
-    aws lambda create-function --function "$function_name" --role "$iam_role_name" --runtime provided --handler "$function_name" --zip-file fileb://.build/lambda/SNSToSlack/lambda.zip
+    aws lambda create-function --function "$function_name" --role "$iam_role_name" --runtime provided --handler "$function_name" --zip-file fileb://.build/lambda/"$executable_name"/lambda.zip
 fi
 
