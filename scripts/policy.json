@@ -4,7 +4,7 @@
         {
             "Effect": "Allow",
             "Action": "logs:CreateLogGroup",
-            "Resource": "arn:aws:logs:<region>:<accesskeyid>:*"
+            "Resource": "arn:aws:logs:<region>:<account#>:*"
         },
         {
             "Effect": "Allow",
@@ -13,7 +13,7 @@
                 "logs:PutLogEvents"
             ],
             "Resource": [
-                "arn:aws:logs:<region>:<accesskeyid>:log-group:/aws/lambda/swift-ses-forwarder:*"
+                "arn:aws:logs:<region>:<account#>:log-group:/aws/lambda/swift-ses-forwarder:*"
             ]
         },
         {
@@ -24,7 +24,7 @@
         {
             "Effect": "Allow",
             "Action": "sns:Publish",
-            "Resource": "arn:aws:sns:<region>:<accesskeyid>:<sns-topic>"
+            "Resource": "arn:aws:sns:<region>:<account#>:<sns-topic>"
         },
         {
             "Effect": "Allow",
