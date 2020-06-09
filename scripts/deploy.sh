@@ -15,9 +15,11 @@
 
 set -eu
 
+here=$(dirname $0)
 # Lambda Function name
 function_name=swift-ses-forwarder
 executable_name=SESForwarder
+policy_name="${function_name}-lamba-policy"
 role_name="${function_name}-lamba-role"
 
 # does function already exist
@@ -34,12 +36,12 @@ else
     echo "creating role \"$role_name\""
     echo "-------------------------------------------------------------------------"
     assume_role_policy='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["sts:AssumeRole"],"Principal":{"Service":["lambda.amazonaws.com"]}}]}'
-    iam_role_name=$(aws iam create-role --role-name "$role_name" --assume-role-policy-document "$assume_role_policy" --output text --query "Role.Arn")
-    aws iam attach-role-policy --role-name "$role_name" --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    iam_role_arn=$(aws iam create-role --role-name "$role_name" --assume-role-policy-document "$assume_role_policy" --output text --query "Role.Arn")
+    aws iam put-role-policy --role-name "$role_name" --policy-name "$policy_name" --policy-document file://$here/policy.json
     # create lambda
     echo "-------------------------------------------------------------------------"
     echo "creating lambda \"$function_name\""
     echo "-------------------------------------------------------------------------"
-    aws lambda create-function --function "$function_name" --role "$iam_role_name" --runtime provided --handler "$function_name" --zip-file fileb://.build/lambda/"$executable_name"/lambda.zip
+    aws lambda create-function --function "$function_name" --role "$iam_role_arn" --runtime provided --memory-size 192 --timeout 20 --handler "$function_name" --zip-file fileb://.build/lambda/"$executable_name"/lambda.zip
 fi
 
