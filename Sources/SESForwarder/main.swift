@@ -44,7 +44,7 @@ class SESForwarderHandler: EventLoopLambdaHandler {
 
     init(eventLoop: EventLoop) {
         self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoop))
-        self.s3 = .init(region: Region(rawValue: Lambda.env("AWS_DEFAULT_REGION")!), httpClientProvider: .shared(self.httpClient))
+        self.s3 = .init(region: Region(rawValue: Lambda.env("AWS_DEFAULT_REGION") ?? "us-east-1"), httpClientProvider: .shared(self.httpClient))
         self.ses = .init(httpClientProvider: .shared(self.httpClient))
         self.sns = .init(httpClientProvider: .shared(self.httpClient))
     }
@@ -196,7 +196,6 @@ class SESForwarderHandler: EventLoopLambdaHandler {
             context.logger.info("Send email to \(recipients)")
             return self.sendEmail(data: email, from: Configuration.fromAddress, recipients: recipients)
         }
-        .map { _ in }
         .flatMapError { error in
             return self.reportError(error, message: message, context: context)
         }
