@@ -38,9 +38,9 @@ Once we have deployed the ses-forwarder-lambda we will return here to add anothe
 
 Before we install the lambda we need to setup its configuration. There are two files that need to be edited. The lambda policy `scripts/policy.json` and the file `Sources/SESForwarder/Configuration.swift`. 
 
-In the lambda policy replace the string `<region>` for the region everything will be running in, `<account#>` for your AWS account number, `<s3bucket>` for the S3 bucket you are saving emails to, `<s3folderprefix>` for the S3 bucket prefix you add to emails saved and finally if you want error reporting replace `<sns-topic>` with an SNS Topic to report errors to. 
+In the lambda policy replace the string `<region>` for the region everything will be running in, `<account#>` for your AWS account number, `<s3bucket>` for the S3 bucket you are saving emails to and `<s3folderprefix>` for the S3 bucket prefix you add to emails saved. 
 
-In the `configuration.swift` file you need to set the S3 bucket and prefix again. Ensure these are the same as was setup in your SES receipt rule and the `policy.json` file. The email forwarding map `forwardMapping`. Each map entry includes the original email and then an array of emails addresses you want to forward to. Finally set the SNS Topic arn for reporting errors to. You can leave this as `nil` if you want.
+In the `configuration.swift` file you need to set the S3 bucket and prefix again. Ensure these are the same as was setup in your SES receipt rule and the `policy.json` file. The email forwarding map `forwardMapping`. Each map entry includes the original email and then an array of emails addresses you want to forward to. 
 
 ## Building and installation
 
