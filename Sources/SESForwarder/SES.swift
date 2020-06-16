@@ -38,7 +38,7 @@ public enum SES {
     }
     
     public struct Mail: Decodable {
-        public let commonHeaders: CommonHeaders
+        //public let commonHeaders: CommonHeaders
         public let destination: [String]
         public let headers: [Header]
         public let headersTruncated: Bool
@@ -48,12 +48,14 @@ public enum SES {
     }
     
     public struct CommonHeaders: Decodable {
-        // TODO: add HTML Header date formatter
-        //public let date: Date
+        public let bcc: [String]?
+        public let cc: [String]?
+        public var date: String
         public let from: [String]
         public let messageId: String
-        public let returnPath: String
-        public let to: [String]
+        public let returnPath: String?
+        public let subject: String?
+        public let to: [String]?
     }
     
     public struct Header: Decodable {
@@ -63,6 +65,8 @@ public enum SES {
     
     public struct Receipt: Decodable {
         public let action: Action
+        public let dmarcPolicy: DMARCPolicy?
+        public let dmarcVerdict: Verdict?
         public let dkimVerdict: Verdict
         public let processingTimeMillis: Int
         public let recipients: [String]
@@ -79,7 +83,20 @@ public enum SES {
     }
     
     public struct Verdict: Decodable {
-        public let status: String
+        public let status: Status
+    }
+    
+    public enum DMARCPolicy: String, Decodable {
+        case none
+        case quarantine
+        case reject
+    }
+    
+    public enum Status: String, Decodable {
+        case pass = "PASS"
+        case fail = "FAIL"
+        case gray = "GRAY"
+        case processingFailed = "PROCESSING_FAILED"
     }
 }
 
