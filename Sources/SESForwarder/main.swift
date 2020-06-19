@@ -6,20 +6,12 @@ import AWSSES
 import Foundation
 import NIO
 
-#if DEBUG
-try Lambda.withLocalServer {
-    Lambda.run { eventLoop in
-        return SESForwarderHandler(eventLoop: eventLoop)
-    }
+Lambda.run { context in
+    return SESForwarderHandler(eventLoop: context.eventLoop)
 }
-#else
-Lambda.run { eventLoop in
-    return SESForwarderHandler(eventLoop: eventLoop)
-}
-#endif
 
-class SESForwarderHandler: EventLoopLambdaHandler {
-    typealias In = SES.Event
+struct SESForwarderHandler: EventLoopLambdaHandler {
+    typealias In = AWSLambdaEvents.SES.Event
     typealias Out = Void
 
     enum Error: Swift.Error, CustomStringConvertible {
@@ -46,8 +38,9 @@ class SESForwarderHandler: EventLoopLambdaHandler {
         self.ses = .init(httpClientProvider: .shared(self.httpClient))
     }
     
-    deinit {
+    func shutdown(context: Lambda.ShutdownContext) -> EventLoopFuture<Void> {
         try? httpClient.syncShutdown()
+        return context.eventLoop.makeSucceededFuture(())
     }
     
     /// Get email content from S3
@@ -132,7 +125,7 @@ class SESForwarderHandler: EventLoopLambdaHandler {
     /// Get list of recipients to forward email to
     /// - Parameter message: SES message
     /// - Returns: returns list of recipients to forward email to
-    func getRecipients(message: SES.Message) -> [String] {
+    func getRecipients(message: AWSLambdaEvents.SES.Message) -> [String] {
         let list = message.receipt.recipients.reduce([String]()) {
             if let newRecipients = Configuration.forwardMapping[$1.lowercased()] {
                 return $0 + newRecipients
@@ -158,10 +151,12 @@ class SESForwarderHandler: EventLoopLambdaHandler {
     ///   - context: Lambda context
     ///   - message: SES message
     /// - Returns: EventLoopFuture for when email is sent
-    func handleMessage(context: Lambda.Context, message: SES.Message) -> EventLoopFuture<Void> {
+    func handleMessage(context: Lambda.Context, message: AWSLambdaEvents.SES.Message) -> EventLoopFuture<Void> {
         let recipients = getRecipients(message: message)
         guard recipients.count > 0 else { return context.eventLoop.makeSucceededFuture(())}
         
+        context.logger.info("Email from \(message.mail.commonHeaders.from) to \(message.receipt.recipients)")
+        context.logger.info("Subject \(message.mail.commonHeaders.subject ?? "")")
         context.logger.info("Fetch email with message id \(message.mail.messageId)")
         return fetchEmailContents(messageId: message.mail.messageId)
             .flatMapThrowing { email in
@@ -173,9 +168,9 @@ class SESForwarderHandler: EventLoopLambdaHandler {
         }
     }
     
-    /// Called by Lambda run. Calls handle message for each message in the supplied payload
-    func handle(context: Lambda.Context, payload: In) -> EventLoopFuture<Void> {
-        let returnFutures: [EventLoopFuture<Void>] = payload.records.map { return handleMessage(context: context, message: $0.ses) }
+    /// Called by Lambda run. Calls `handleMessage` for each message in the supplied event
+    func handle(context: Lambda.Context, event: In) -> EventLoopFuture<Void> {
+        let returnFutures: [EventLoopFuture<Void>] = event.records.map { return handleMessage(context: context, message: $0.ses) }
         return EventLoopFuture.whenAllSucceed(returnFutures, on: context.eventLoop).map { _ in }
     }
 }
