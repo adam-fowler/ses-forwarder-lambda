@@ -9,6 +9,5 @@ extension SESForwarderHandler {
         ]
         static let s3Bucket: String = "example"
         static let s3KeyPrefix: String = "temp/email/"
-        static let snsTopicArn: String? = nil
     }
 }
