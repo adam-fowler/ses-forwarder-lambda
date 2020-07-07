@@ -29,16 +29,19 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     }
 
     let httpClient: HTTPClient
+    let awsClient: AWSClient
     let s3: AWSS3.S3
     let ses: AWSSES.SES
 
     init(eventLoop: EventLoop) {
         self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoop))
-        self.s3 = .init(region: Region(rawValue: Lambda.env("AWS_DEFAULT_REGION") ?? "us-east-1"), httpClientProvider: .shared(self.httpClient))
-        self.ses = .init(httpClientProvider: .shared(self.httpClient))
+        self.awsClient = AWSClient(credentialProvider: .selector(.environment, .configFile()), httpClientProvider: .shared(httpClient))
+        self.s3 = .init(client: awsClient)
+        self.ses = .init(client: awsClient)
     }
     
     func shutdown(context: Lambda.ShutdownContext) -> EventLoopFuture<Void> {
+        try? awsClient.syncShutdown()
         try? httpClient.syncShutdown()
         return context.eventLoop.makeSucceededFuture(())
     }
