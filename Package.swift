@@ -11,17 +11,17 @@ let package = Package(
         .executable(name: "SESForwarder", targets: ["SESForwarder"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime", from: "0.2.0"),
-        .package(url: "https://github.com/swift-server/async-http-client", from: "1.0.0"),
-        .package(url: "https://github.com/swift-aws/aws-sdk-swift", .upToNextMinor(from: "5.0.0-alpha.4"))
+        .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", from: "0.3.0"),
+        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.0.0"),
+        .package(url: "https://github.com/soto-project/soto.git", from: "5.0.0")
     ],
     targets: [
         .target(name: "SESForwarder", dependencies: [
             .product(name: "AWSLambdaRuntime", package: "swift-aws-lambda-runtime"),
             .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-runtime"),
             .product(name: "AsyncHTTPClient", package: "async-http-client"),
-            .product(name: "AWSS3", package: "aws-sdk-swift"),
-            .product(name: "AWSSES", package: "aws-sdk-swift")
+            .product(name: "SotoS3", package: "soto"),
+            .product(name: "SotoSES", package: "soto")
         ])
     ]
 )
