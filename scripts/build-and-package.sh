@@ -21,6 +21,7 @@ executable=SESForwarder
 echo "-------------------------------------------------------------------------"
 echo "building \"$executable\" lambda"
 echo "-------------------------------------------------------------------------"
+docker run --rm -v "$base":/src -w /src/ swift-lambda-builder bash -cl "swift package update"
 docker run --rm -v "$base":/src -w /src/ swift-lambda-builder bash -cl "swift build --product $executable -c release -Xswiftc -g"
 echo "done"
 
