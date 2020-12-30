@@ -38,7 +38,7 @@ Once we have deployed the ses-forwarder-lambda we will return here to add anothe
 
 Before we install the lambda we need to setup its configuration. There are two files that need to be edited. The lambda policy `scripts/policy.json` and the file `ses-forwarder-configuration.json`. 
 
-In the json file you need to set the S3 path for where messages will be stored. Ensure this is the same as was setup in your SES receipt rule. The email forwarding map `forwardMapping`. Each map entry includes the original email and then an array of emails addresses you want to forward to. Upload this file to an accessible point in S3.
+In the `ses-forwarder-configuration.json` file you need to set the S3 path `s3Folder` for where messages will be stored. Ensure this is the same as was setup in your SES receipt rule. The address `fromAddress` that will be used as the from address in your forwarded emails. The email forwarding map `forwardMapping`. Each map entry includes the original email and then an array of emails addresses you want to forward to. Upload this file to an accessible point in S3.
 
 In the lambda policy replace the string `<region>` for the region everything will be running in, `<account#>` for your AWS account number, `<s3bucket>` for the S3 bucket you are saving emails to and `<s3folderprefix>` for the S3 bucket prefix you add to emails saved. You need to ensure this policy gives you access to your configuration json file also.
 
