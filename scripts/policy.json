@@ -23,11 +23,6 @@
         },
         {
             "Effect": "Allow",
-            "Action": "sns:Publish",
-            "Resource": "arn:aws:sns:<region>:<account#>:<sns-topic>"
-        },
-        {
-            "Effect": "Allow",
             "Action": "s3:GetObject",
             "Resource": "arn:aws:s3:::<s3bucket>/<s3folderprefix>/*"
         }
