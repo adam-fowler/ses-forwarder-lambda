@@ -17,12 +17,13 @@ set -eu
 
 base=$(pwd)
 executable=SESForwarder
+swift_docker=swift:5.3-amazonlinux2
 
 echo "-------------------------------------------------------------------------"
 echo "building \"$executable\" lambda"
 echo "-------------------------------------------------------------------------"
-docker run --rm -v "$base":/src -w /src/ swift:5.3-amazonlinux2 bash -cl "swift package update"
-docker run --rm -v "$base":/src -w /src/ swift:5.3-amazonlinux2 bash -cl "swift build --product $executable -c release -Xswiftc -static-stdlib"
+docker run --rm -v "$base":/src -w /src/ $swift_docker bash -cl "swift package update"
+docker run --rm -v "$base":/src -w /src/ $swift_docker bash -cl "swift build --product $executable -c release -Xswiftc -static-stdlib"
 echo "done"
 
 echo "-------------------------------------------------------------------------"
