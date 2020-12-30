@@ -36,11 +36,11 @@ Once we have deployed the ses-forwarder-lambda we will return here to add anothe
 
 ## Configuration
 
-Before we install the lambda we need to setup its configuration. There are two files that need to be edited. The lambda policy `scripts/policy.json` and the file `Sources/SESForwarder/Configuration.swift`. 
+Before we install the lambda we need to setup its configuration. There are two files that need to be edited. The lambda policy `scripts/policy.json` and the file `ses-forwarder-configuration.json`. 
 
 In the lambda policy replace the string `<region>` for the region everything will be running in, `<account#>` for your AWS account number, `<s3bucket>` for the S3 bucket you are saving emails to and `<s3folderprefix>` for the S3 bucket prefix you add to emails saved. 
 
-In the `configuration.swift` file you need to set the S3 bucket and prefix again. Ensure these are the same as was setup in your SES receipt rule and the `policy.json` file. The email forwarding map `forwardMapping`. Each map entry includes the original email and then an array of emails addresses you want to forward to. 
+In the json file you need to set the S3 path for where messages will be stored. Ensure these are the same as was setup in your SES receipt rule and the `policy.json` file. The email forwarding map `forwardMapping`. Each map entry includes the original email and then an array of emails addresses you want to forward to. Upload this file to an accessible point in S3.
 
 ## Building and installation
 
@@ -60,6 +60,7 @@ The install process can be broken into four stages.
 2) Compile the code. First part of `scripts/build-and-package.sh`
 3) Package the compiled Lambda into a zip with required runtime libraries. Second part of `scripts/build-and-package.sh`
 4) Deploy the packaged Lambda. `deploy.sh`
+5) Go to console and edit environment variables for the Lambda. Set SES_FORWARDER_CONFIG to point to configuration json file you uploaded to S3. Path should be of the format `s3://bucket/key`.
 
 If this is the first time you are running the install, the `deploy.sh` script will create a new IAM role, add the policy document `policy.json` to the role and create a new Lambda function. Otherwise it will just update the already created Lambda.
 
