@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from '@aws-cdk/core';
-import { SesForwarderLambdaStack } from '../lib/cdk-stack';
+import { SesForwarderLambdaStack } from '../lib/ses-forwarder-stack';
 
 const app = new cdk.App();
 new SesForwarderLambdaStack(app, 'SesForwarderLambdaStack', {
