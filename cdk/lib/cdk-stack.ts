@@ -40,7 +40,7 @@ export class SesForwarderLambdaStack extends Stack {
     sendEmailPolicy.addResources("*")
     const readS3BucketPolicy = new iam.PolicyStatement()
     readS3BucketPolicy.addActions("s3:GetObject")
-    readS3BucketPolicy.addResources(this.bucket.bucketArn)
+    readS3BucketPolicy.addResources(this.bucket.bucketArn + "/*")
 
     // docker file 
     const zipfile = path.join(__dirname, "../../.build/lambda/SESForwarder/lambda.zip")
