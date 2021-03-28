@@ -68,7 +68,7 @@ export class SesForwarderLambdaStack extends Stack {
           actions: [
             new sesActions.S3({
               bucket: this.bucket,
-              objectKeyPrefix: "/messages"
+              objectKeyPrefix: "messages/"
             }),
             new sesActions.Lambda({
               function: lambdaFunction,
