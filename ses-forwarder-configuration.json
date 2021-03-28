@@ -1,9 +1,0 @@
-{
-    "fromAddress":"noreply@email.com",
-    "s3Folder":"s3://my-bucket/email/messages/",
-    "forwardMapping":{
-        "admin@email.com":["user1@gmail.com", "user2@gmail.com"],
-        "user@email.com":["viewfinder.opticalaberration@gmail.com"]
-    }
-}
-

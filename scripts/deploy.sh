@@ -16,6 +16,7 @@
 set -eu
 
 here=$(dirname $0)
+export AWS_PROFILE=opticalaberration-admin_dev
 # Lambda Function name
 function_name=swift-ses-forwarder
 executable_name=SESForwarder

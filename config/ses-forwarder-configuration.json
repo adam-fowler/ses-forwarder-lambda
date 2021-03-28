@@ -1,0 +1,7 @@
+{
+    "fromAddress":"noreply@soto.codes",
+    "forwardMapping":{
+        "admin@soto.codes":["swiftaws@gmail.com"]
+    }
+}
+
