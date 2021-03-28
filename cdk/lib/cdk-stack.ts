@@ -71,7 +71,8 @@ export class SesForwarderLambdaStack extends Stack {
               objectKeyPrefix: "/messages"
             }),
             new sesActions.Lambda({
-              function: lambdaFunction
+              function: lambdaFunction,
+              invocationType: sesActions.LambdaInvocationType.EVENT
             })
           ]             
         }
