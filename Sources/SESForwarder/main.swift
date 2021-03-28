@@ -7,7 +7,7 @@ import Foundation
 import NIO
 
 Lambda.run { context in
-    return SESForwarderHandler(eventLoop: context.eventLoop)
+    return SESForwarderHandler(context: context)
 }
 
 struct SESForwarderHandler: EventLoopLambdaHandler {
@@ -17,12 +17,13 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     struct Configuration: Codable {
         let fromAddress: String
         let forwardMapping: [String: [String]]
-        let s3Folder: S3Folder
     }
 
     enum Error: Swift.Error, CustomStringConvertible {
         case messageFileIsEmpty(String)
         case noFromAddress
+        case noMessageFolderEnvironmentVariable
+        case invalidMessageFolder
         case noConfigFileEnvironmentVariable
         case invalidConfigFilePath
         case configFileReadFailed
@@ -33,6 +34,10 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
                 return "File for message: \(messageId) is empty"
             case .noFromAddress:
                 return "Message did not contain a from address"
+            case .invalidMessageFolder:
+                return "Environment variable SES_FORWARDER_FOLDER is invalid should be of form \"s3://bucket/path\""
+            case .noMessageFolderEnvironmentVariable:
+                return "Environment variable SES_FORWARDER_FOLDER does not exists"
             case .noConfigFileEnvironmentVariable:
                 return "Environment variable SES_FORWARDER_CONFIG does not exists"
             case .invalidConfigFilePath:
@@ -48,16 +53,18 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     let s3: SotoS3.S3
     let ses: SotoSES.SES
     let configPromise: EventLoopPromise<Configuration>
+    let tempS3MessageFolder: S3Folder?
 
-    init(eventLoop: EventLoop) {
-        self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(eventLoop))
+    init(context: Lambda.InitializationContext) {
+        self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(context.eventLoop))
         self.awsClient = AWSClient(credentialProvider: .selector(.environment, .configFile()), httpClientProvider: .shared(httpClient))
         self.s3 = .init(client: awsClient)
         self.ses = .init(client: awsClient)
+        self.configPromise = context.eventLoop.makePromise(of: Configuration.self)
 
-        self.configPromise = eventLoop.makePromise(of: Configuration.self)
+        self.tempS3MessageFolder = Lambda.env("SES_FORWARDER_FOLDER").map { S3Folder(url: $0) } ?? nil
 
-        loadConfiguration(on: eventLoop).cascade(to: self.configPromise)
+        loadConfiguration(logger: context.logger, on: context.eventLoop).cascade(to: self.configPromise)
     }
     
     func shutdown(context: Lambda.ShutdownContext) -> EventLoopFuture<Void> {
@@ -66,11 +73,15 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
         return context.eventLoop.makeSucceededFuture(())
     }
 
-    func loadConfiguration(on eventLoop: EventLoop) -> EventLoopFuture<Configuration> {
-        guard let configFile = Lambda.env("SES_FORWARDER_CONFIG") else { return eventLoop.makeFailedFuture(Error.noConfigFileEnvironmentVariable) }
-        guard let s3Path = S3Folder(url: configFile) else { return eventLoop.makeFailedFuture(Error.invalidConfigFilePath) }
+    func loadConfiguration(logger: Logger, on eventLoop: EventLoop) -> EventLoopFuture<Configuration> {
+        guard let configFile = Lambda.env("SES_FORWARDER_CONFIG") else {
+            return eventLoop.makeFailedFuture(Error.noConfigFileEnvironmentVariable)
+        }
+        guard let s3Path = S3Folder(url: configFile) else {
+            return eventLoop.makeFailedFuture(Error.invalidConfigFilePath)
+        }
 
-        return self.s3.getObject(.init(bucket: s3Path.bucket, key: s3Path.path)).flatMapThrowing { response -> Configuration in
+        return self.s3.getObject(.init(bucket: s3Path.bucket, key: s3Path.path), logger: logger).flatMapThrowing { response -> Configuration in
             guard let body = response.body?.asByteBuffer() else { throw Error.configFileReadFailed }
             return try self.decoder.decode(Configuration.self, from: body)
         }
@@ -79,8 +90,8 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     /// Get email content from S3
     /// - Parameter messageId: message id (also S3 file name)
     /// - Returns: EventLoopFuture which will be fulfulled with email content
-    func fetchEmailContents(messageId: String, s3Folder: S3Folder) -> EventLoopFuture<Data> {
-        return s3.getObject(.init(bucket: s3Folder.bucket, key: s3Folder.path + messageId))
+    func fetchEmailContents(messageId: String, s3Folder: S3Folder, logger: Logger) -> EventLoopFuture<Data> {
+        return s3.getObject(.init(bucket: s3Folder.bucket, key: s3Folder.path + messageId), logger: logger)
             .flatMapThrowing { response in
                 guard let body = response.body?.asData() else { throw Error.messageFileIsEmpty(messageId) }
                 return body
@@ -174,9 +185,9 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     ///   - from: From address
     ///   - recipients: List of recipients
     /// - Returns: EventLoopFuture that'll be fulfilled when the email has been sent
-    func sendEmail(data: Data, from: String, recipients: [String]) -> EventLoopFuture<Void> {
+    func sendEmail(data: Data, from: String, recipients: [String], logger: Logger) -> EventLoopFuture<Void> {
         let request = SotoSES.SES.SendRawEmailRequest(destinations: recipients, rawMessage: .init(data: data), source: from)
-        return ses.sendRawEmail(request).map { _ in }
+        return ses.sendRawEmail(request, logger: logger).map { _ in }
     }
     
     /// handle one message
@@ -185,6 +196,9 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     ///   - message: SES message
     /// - Returns: EventLoopFuture for when email is sent
     func handleMessage(context: Lambda.Context, message: AWSLambdaEvents.SES.Message, configuration: Configuration) -> EventLoopFuture<Void> {
+        guard let tempS3MessageFolder = self.tempS3MessageFolder else {
+            return context.eventLoop.makeFailedFuture(Error.invalidMessageFolder)
+        }
         let recipients = getRecipients(message: message, configuration: configuration)
         guard recipients.count > 0 else { return context.eventLoop.makeSucceededFuture(())}
         
@@ -193,13 +207,14 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
         context.logger.info("Fetch email with message id \(message.mail.messageId)")
         return fetchEmailContents(
             messageId: message.mail.messageId,
-            s3Folder: S3Folder(bucket: configuration.s3Folder.bucket, path: configuration.s3Folder.path)
+            s3Folder: tempS3MessageFolder,
+            logger: context.logger
         ).flatMapThrowing { email in
             return try self.processEmail(email: email, configuration: configuration)
         }
         .flatMap { email -> EventLoopFuture<Void> in
             context.logger.info("Send email to \(recipients)")
-            return self.sendEmail(data: email, from: configuration.fromAddress, recipients: recipients)
+            return self.sendEmail(data: email, from: configuration.fromAddress, recipients: recipients, logger: context.logger)
         }
     }
     
