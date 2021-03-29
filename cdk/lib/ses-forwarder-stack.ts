@@ -1,15 +1,19 @@
 import { App, Construct, Duration, Stack, StackProps } from "@aws-cdk/core";
 import * as lambda from "@aws-cdk/aws-lambda";
+import * as lambdaDestinations from "@aws-cdk/aws-lambda-destinations";
 import * as iam from "@aws-cdk/aws-iam";
 import * as s3 from "@aws-cdk/aws-s3";
 import * as s3Deploy from "@aws-cdk/aws-s3-deployment";
 import * as ses from "@aws-cdk/aws-ses";
+import * as sns from "@aws-cdk/aws-sns";
 import * as sesActions from "@aws-cdk/aws-ses-actions";
 import * as path from "path";
 import { toComputedKey } from "@babel/types";
 
 const messageFolder = "messages/"
-const recipientFilter = ["email.com"]
+// Edit this variable to filter which emails should be processed. This will filter based on the 
+// recipient of the email. You can do this for a whole domain or for individual email addresses.
+const recipientFilter = ["email.com", "admin@email2.com"]
 
 export class SesForwarderLambdaStack extends Stack {
   private bucket: s3.Bucket
@@ -55,6 +59,11 @@ export class SesForwarderLambdaStack extends Stack {
     readS3BucketPolicy.addActions("s3:GetObject")
     readS3BucketPolicy.addResources(this.bucket.bucketArn + "/*")
 
+    // Add SNS topic to write on failure
+    const failTopic = new sns.Topic(this, "SesForwarderFailTopic", {
+      topicName: "ses-forwarder_fail"
+    })
+
     // docker file 
     const zipfile = path.join(__dirname, "../../.build/lambda/SESForwarder/lambda.zip")
     // create lambda
@@ -63,11 +72,13 @@ export class SesForwarderLambdaStack extends Stack {
       handler: "swift-ses-forwarder",
       runtime: lambda.Runtime.PROVIDED,
       memorySize: 192,
+      timeout: Duration.seconds(15),
       initialPolicy: [sendEmailPolicy, readS3BucketPolicy],
       environment: {
         "SES_FORWARDER_CONFIG": "s3://" + this.bucket.bucketName + "/ses-forwarder-configuration.json",
         "SES_FORWARDER_FOLDER": "s3://" + this.bucket.bucketName + "/" + messageFolder
-      }
+      },
+      onFailure: new lambdaDestinations.SnsDestination(failTopic)
     })
 
     // Add SES receipt rule set
