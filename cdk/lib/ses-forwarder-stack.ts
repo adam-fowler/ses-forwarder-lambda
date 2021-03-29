@@ -1,4 +1,4 @@
-import { App, Construct, Stack, StackProps } from "@aws-cdk/core";
+import { App, Construct, Duration, Stack, StackProps } from "@aws-cdk/core";
 import * as lambda from "@aws-cdk/aws-lambda";
 import * as iam from "@aws-cdk/aws-iam";
 import * as s3 from "@aws-cdk/aws-s3";
@@ -6,6 +6,10 @@ import * as s3Deploy from "@aws-cdk/aws-s3-deployment";
 import * as ses from "@aws-cdk/aws-ses";
 import * as sesActions from "@aws-cdk/aws-ses-actions";
 import * as path from "path";
+import { toComputedKey } from "@babel/types";
+
+const messageFolder = "messages/"
+const recipientFilter = ["email.com"]
 
 export class SesForwarderLambdaStack extends Stack {
   private bucket: s3.Bucket
@@ -14,7 +18,16 @@ export class SesForwarderLambdaStack extends Stack {
     super(scope, id, props);
 
     // S3 bucket
-    this.bucket = new s3.Bucket(this, "SesForwarderBucket")
+    this.bucket = new s3.Bucket(this, "SesForwarderBucket", {
+      lifecycleRules: [
+        {
+          prefix: messageFolder,
+          expiration: Duration.days(30),
+          enabled: true,
+          id: "DeleteMessagesAfter30Days"
+        }
+      ]
+    })
 
     // s3 bucket policy statements
     const saveToS3Policy = new iam.PolicyStatement()
@@ -28,7 +41,7 @@ export class SesForwarderLambdaStack extends Stack {
     })
     bucketPolicy.document.addStatements(saveToS3Policy)
 
-    // deploy config to s3 bucket
+    // deploy ses forwarder config file to s3 bucket
     new s3Deploy.BucketDeployment(this, "DeployConfiguration", {
       sources: [s3Deploy.Source.asset("../config")],
       destinationBucket: this.bucket
@@ -53,7 +66,7 @@ export class SesForwarderLambdaStack extends Stack {
       initialPolicy: [sendEmailPolicy, readS3BucketPolicy],
       environment: {
         "SES_FORWARDER_CONFIG": "s3://" + this.bucket.bucketName + "/ses-forwarder-configuration.json",
-        "SES_FORWARDER_FOLDER": "s3://" + this.bucket.bucketName + "/messages/"
+        "SES_FORWARDER_FOLDER": "s3://" + this.bucket.bucketName + "/" + messageFolder
       }
     })
 
@@ -63,12 +76,12 @@ export class SesForwarderLambdaStack extends Stack {
       receiptRuleSetName: "SesForwarderLambda",
       rules: [
         {
-          recipients: ["admin@soto.codes"],
+          recipients: recipientFilter,
           scanEnabled: true,
           actions: [
             new sesActions.S3({
               bucket: this.bucket,
-              objectKeyPrefix: "messages/"
+              objectKeyPrefix: messageFolder
             }),
             new sesActions.Lambda({
               function: lambdaFunction,
