@@ -1,0 +1,7 @@
+{
+    "fromAddress":"noreply@email.com",
+    "forwardMapping":{
+        "adam@email.com":["adam@gmail.com"]
+    }
+}
+
