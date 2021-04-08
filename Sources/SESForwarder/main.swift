@@ -17,6 +17,7 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     struct Configuration: Codable {
         let fromAddress: String
         let forwardMapping: [String: [String]]
+        let blockSpam: Bool?
     }
 
     enum Error: Swift.Error, CustomStringConvertible {
@@ -204,7 +205,12 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
         
         context.logger.info("Email from \(message.mail.commonHeaders.from) to \(message.receipt.recipients)")
         context.logger.info("Subject \(message.mail.commonHeaders.subject ?? "")")
+        if message.receipt.spamVerdict.status == .fail, configuration.blockSpam == true {
+            context.logger.info("Email is spam do not forward")
+            return context.eventLoop.makeSucceededVoidFuture()
+        }
         context.logger.info("Fetch email with message id \(message.mail.messageId)")
+
         return fetchEmailContents(
             messageId: message.mail.messageId,
             s3Folder: tempS3MessageFolder,
