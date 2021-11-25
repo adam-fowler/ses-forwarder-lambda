@@ -8,7 +8,6 @@ import * as ses from "@aws-cdk/aws-ses";
 import * as sns from "@aws-cdk/aws-sns";
 import * as sesActions from "@aws-cdk/aws-ses-actions";
 import * as path from "path";
-import { toComputedKey } from "@babel/types";
 
 const messageFolder = "messages/"
 // Edit this variable to filter which emails should be processed. This will filter based on the 
