@@ -8,11 +8,12 @@ import * as ses from "@aws-cdk/aws-ses";
 import * as sns from "@aws-cdk/aws-sns";
 import * as sesActions from "@aws-cdk/aws-ses-actions";
 import * as path from "path";
+import * as fs from "fs";
 
 const messageFolder = "messages/"
 // Edit this variable to filter which emails should be processed. This will filter based on the 
 // recipient of the email. You can do this for a whole domain or for individual email addresses.
-const recipientFilter = ["email.com", "admin@email2.com"]
+const configFile = "ses-forwarder-configuration-optical-aberration.json"
 
 export class SesForwarderLambdaStack extends Stack {
   private bucket: s3.Bucket
@@ -31,6 +32,10 @@ export class SesForwarderLambdaStack extends Stack {
         }
       ]
     })
+    // load config to get recipient filter
+    const contents = fs.readFileSync(`../config/${configFile}`, "utf8");
+    const config = JSON.parse(contents);
+    const recipientFilter: string[] = config.recipientFilter;
 
     // s3 bucket policy statements
     const saveToS3Policy = new iam.PolicyStatement()
@@ -46,7 +51,7 @@ export class SesForwarderLambdaStack extends Stack {
 
     // deploy ses forwarder config file to s3 bucket
     new s3Deploy.BucketDeployment(this, "DeployConfiguration", {
-      sources: [s3Deploy.Source.asset("../config")],
+      sources: [s3Deploy.Source.asset(`../config/`)],
       destinationBucket: this.bucket
     })
 
@@ -74,7 +79,7 @@ export class SesForwarderLambdaStack extends Stack {
       timeout: Duration.seconds(15),
       initialPolicy: [sendEmailPolicy, readS3BucketPolicy],
       environment: {
-        "SES_FORWARDER_CONFIG": "s3://" + this.bucket.bucketName + "/ses-forwarder-configuration.json",
+        "SES_FORWARDER_CONFIG": "s3://" + this.bucket.bucketName + `/${configFile}`,
         "SES_FORWARDER_FOLDER": "s3://" + this.bucket.bucketName + "/" + messageFolder
       },
       onFailure: new lambdaDestinations.SnsDestination(failTopic)
