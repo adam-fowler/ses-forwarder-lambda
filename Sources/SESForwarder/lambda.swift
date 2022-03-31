@@ -62,9 +62,10 @@ final class SESForwarderHandler: LambdaHandler {
         self.configuration = nil//try await self.loadConfiguration(logger: context.logger)
     }
     
-    func shutdown(context: Lambda.ShutdownContext) async throws {
-        try awsClient.syncShutdown()
-        try await httpClient.shutdown()
+    func shutdown(context: Lambda.ShutdownContext) -> EventLoopFuture<Void> {
+        try? awsClient.syncShutdown()
+        try? httpClient.syncShutdown()
+        return context.eventLoop.makeSucceededFuture(())
     }
 
     func loadConfiguration(logger: Logger) async throws -> Configuration {
@@ -208,7 +209,7 @@ final class SESForwarderHandler: LambdaHandler {
         )
 
         let newEmail = try self.processEmail(email: email, configuration: configuration)
-        
+
         context.logger.info("Send email to \(recipients)")
         return try await self.sendEmail(data: newEmail, from: configuration.fromAddress, recipients: recipients, logger: context.logger)
     }
