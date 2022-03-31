@@ -3,6 +3,7 @@
 /.swiftpm
 /.vscode
 /Packages
+/config
 /*.xcodeproj
 xcuserdata/
 Package.resolved

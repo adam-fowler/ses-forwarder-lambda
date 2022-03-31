@@ -14,7 +14,10 @@ You need Docker installed on your mac before you can continue. You can find inst
 
 ### Configuration
 
-The Lambda uses the configuration file `config/ses-forwarder-configuration.json` to setup the Lambda. It contains two fields. The first `fromAddress` is the address that will be used as the from address in your forwarded emails. The second `forwardMapping` defines where to forward emails to. Each map entry includes the original email and then an array of emails addresses you want to forward to.  
+The Lambda uses the configuration file `config/ses-forwarder-configuration.json` to setup the Lambda. It contains three fields. 
+- `fromAddress`: the address that will be used as the from address in your forwarded emails. 
+- `forwardMapping`: defines where to forward emails to. Each map entry includes the original email and then an array of emails addresses you want to forward to.
+- `recipientFilter`: Email filter to apply before running lambda. This is an array of email addresses or domains.
 
 ## Installation
 
