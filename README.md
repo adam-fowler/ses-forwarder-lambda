@@ -25,7 +25,7 @@ The Lambda uses the configuration file `config/ses-forwarder-configuration.json`
 
 I have written CDK scripts to setup everything. You can find them in the `cdk` folder. They pretty much do everything detailed below. You can find out more about CDK [here](https://docs.aws.amazon.com/cdk/latest/guide/home.html).
 
-Before installing the lambda you need to edit the recipient filter to include the email addresses you want to forward email for. Open `cdk/lib/ses-forwarder-stack.ts` and edit the variable `recipientFilter`. Once you have done this you can install everything by running the following commands in your shell
+Once you have the CDK installed you can setup everything by running the following commands in your shell
 ```
 cd cdk
 cdk deploy
@@ -39,6 +39,8 @@ The script does the following
 6) Add SES receipt rule set to save files to S3 bucket and then run Lambda
 
 Once the script has deployed you need to go to the AWS SES Console, select Rule Sets, select the Rule set `SesForwarderLambda` and press `Set as Active Rule Set`. You now have a running email forwarder.
+
+## Manual Installation
 
 If you would rather manually setup everything you can follow the direction below
 
