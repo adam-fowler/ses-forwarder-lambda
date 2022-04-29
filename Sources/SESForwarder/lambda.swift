@@ -52,7 +52,7 @@ final class SESForwarderHandler: LambdaHandler {
     var configuration: Configuration?
     let tempS3MessageFolder: S3Folder?
 
-    init(context: Lambda.InitializationContext) {
+    init(context: LambdaInitializationContext) {
         self.awsClient = AWSClient(
             credentialProvider: .selector(.environment, .configFile()), 
             httpClientProvider: .createNewWithEventLoopGroup(context.eventLoop)
@@ -61,13 +61,13 @@ final class SESForwarderHandler: LambdaHandler {
         self.ses = .init(client: awsClient)
         self.tempS3MessageFolder = Lambda.env("SES_FORWARDER_FOLDER").map { S3Folder(url: $0) } ?? nil
         self.configuration = nil//try await self.loadConfiguration(logger: context.logger)
+        
+        context.terminator.register(name: "AWSClient") { eventLoop in
+            try? self.awsClient.syncShutdown()
+            return eventLoop.makeSucceededFuture(())
+        }
     }
     
-    func shutdown(context: Lambda.ShutdownContext) -> EventLoopFuture<Void> {
-        try? awsClient.syncShutdown()
-        return context.eventLoop.makeSucceededFuture(())
-    }
-
     func loadConfiguration(logger: Logger) async throws -> Configuration {
         guard let configFile = Lambda.env("SES_FORWARDER_CONFIG") else {
             throw Error.noConfigFileEnvironmentVariable

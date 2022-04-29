@@ -12,7 +12,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", .branch("main")),
-        .package(url: "https://github.com/adam-fowler/swift-aws-lambda-events.git", .branch("ses-event-fixes")),
+        .package(url: "https://github.com/swift-server/swift-aws-lambda-events.git", .branch("main")),
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.0.0"),
         .package(url: "https://github.com/soto-project/soto.git", from: "6.0.0-alpha.1")
     ],
