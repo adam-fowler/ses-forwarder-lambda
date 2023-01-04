@@ -1,0 +1,1 @@
+// Generated source for S3 and SNS

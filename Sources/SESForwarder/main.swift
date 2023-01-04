@@ -1,8 +1,7 @@
 import AsyncHTTPClient
 import AWSLambdaEvents
 import AWSLambdaRuntime
-import SotoS3
-import SotoSES
+import SotoServices
 import Foundation
 import NIO
 
@@ -51,8 +50,8 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
 
     let httpClient: HTTPClient
     let awsClient: AWSClient
-    let s3: SotoS3.S3
-    let ses: SotoSES.SES
+    let s3: SotoServices.S3
+    let ses: SotoServices.SES
     let configPromise: EventLoopPromise<Configuration>
     let tempS3MessageFolder: S3Folder?
 
@@ -187,7 +186,7 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
     ///   - recipients: List of recipients
     /// - Returns: EventLoopFuture that'll be fulfilled when the email has been sent
     func sendEmail(data: Data, from: String, recipients: [String], logger: Logger) -> EventLoopFuture<Void> {
-        let request = SotoSES.SES.SendRawEmailRequest(destinations: recipients, rawMessage: .init(data: data), source: from)
+        let request = SotoServices.SES.SendRawEmailRequest(destinations: recipients, rawMessage: .init(data: .data(data)), source: from)
         return ses.sendRawEmail(request, logger: logger).map { _ in }
     }
     
