@@ -17,7 +17,7 @@ set -eu
 
 base=$(pwd)
 executable=SESForwarder
-swift_docker=swift:5.3-amazonlinux2
+swift_docker=swift:5.6-amazonlinux2
 
 echo "-------------------------------------------------------------------------"
 echo "building \"$executable\" lambda"

@@ -1,13 +1,12 @@
-import AsyncHTTPClient
 import AWSLambdaEvents
 import AWSLambdaRuntime
-import SotoS3
-import SotoSES
+import AsyncHTTPClient
 import Foundation
 import NIO
+import SotoServices
 
 Lambda.run { context in
-    return SESForwarderHandler(context: context)
+    SESForwarderHandler(context: context)
 }
 
 struct SESForwarderHandler: EventLoopLambdaHandler {
@@ -49,65 +48,61 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
         }
     }
 
-    let httpClient: HTTPClient
     let awsClient: AWSClient
-    let s3: SotoS3.S3
-    let ses: SotoSES.SES
-    let configPromise: EventLoopPromise<Configuration>
+    let s3: SotoServices.S3
+    let ses: SotoServices.SES
+    let configurationLoadingTask: Task<Configuration, Swift.Error>
     let tempS3MessageFolder: S3Folder?
 
     init(context: Lambda.InitializationContext) {
-        self.httpClient = HTTPClient(eventLoopGroupProvider: .shared(context.eventLoop))
-        self.awsClient = AWSClient(credentialProvider: .selector(.environment, .configFile()), httpClientProvider: .shared(httpClient))
+        self.awsClient = AWSClient(credentialProvider: .selector(.environment, .configFile()))
         self.s3 = .init(client: awsClient)
         self.ses = .init(client: awsClient)
-        self.configPromise = context.eventLoop.makePromise(of: Configuration.self)
 
         self.tempS3MessageFolder = Lambda.env("SES_FORWARDER_FOLDER").map { S3Folder(url: $0) } ?? nil
 
-        loadConfiguration(logger: context.logger, on: context.eventLoop).cascade(to: self.configPromise)
+        let s3 = self.s3
+        self.configurationLoadingTask = Task {
+            try await Self.loadConfiguration(s3: s3, logger: context.logger)
+        }
     }
-    
+
     func shutdown(context: Lambda.ShutdownContext) -> EventLoopFuture<Void> {
         try? awsClient.syncShutdown()
-        try? httpClient.syncShutdown()
         return context.eventLoop.makeSucceededFuture(())
     }
 
-    func loadConfiguration(logger: Logger, on eventLoop: EventLoop) -> EventLoopFuture<Configuration> {
+    static func loadConfiguration(s3: SotoServices.S3, logger: Logger) async throws -> Configuration {
         guard let configFile = Lambda.env("SES_FORWARDER_CONFIG") else {
-            return eventLoop.makeFailedFuture(Error.noConfigFileEnvironmentVariable)
+            throw Error.noConfigFileEnvironmentVariable
         }
         guard let s3Path = S3Folder(url: configFile) else {
-            return eventLoop.makeFailedFuture(Error.invalidConfigFilePath)
+            throw Error.invalidConfigFilePath
         }
 
-        return self.s3.getObject(.init(bucket: s3Path.bucket, key: s3Path.path), logger: logger).flatMapThrowing { response -> Configuration in
-            guard let body = response.body?.asByteBuffer() else { throw Error.configFileReadFailed }
-            return try self.decoder.decode(Configuration.self, from: body)
-        }
+        let response = try await s3.getObject(bucket: s3Path.bucket, key: s3Path.path, logger: logger)
+        let body = try await response.body.collect(upTo: 1_000_000)
+        return try JSONDecoder().decode(Configuration.self, from: body)
     }
 
     /// Get email content from S3
     /// - Parameter messageId: message id (also S3 file name)
     /// - Returns: EventLoopFuture which will be fulfulled with email content
-    func fetchEmailContents(messageId: String, s3Folder: S3Folder, logger: Logger) -> EventLoopFuture<Data> {
-        return s3.getObject(.init(bucket: s3Folder.bucket, key: s3Folder.path + messageId), logger: logger)
-            .flatMapThrowing { response in
-                guard let body = response.body?.asData() else { throw Error.messageFileIsEmpty(messageId) }
-                return body
-        }
+    func fetchEmailContents(messageId: String, s3Folder: S3Folder, logger: Logger) async throws -> ByteBuffer {
+        let object = try await self.s3.getObject(bucket: s3Folder.bucket, key: s3Folder.path + messageId, logger: logger)
+        let body = try await object.body.collect(upTo: 10_000_000)
+        return body
     }
-    
+
     /// Edit email headers, so we are allowed to forward this email on.
     ///
     /// - Parameters:
     ///   - emailData: original email data
     /// - Throws: noFromAddress
     /// - Returns: processed email data
-    func processEmail(email emailData: Data, configuration: Configuration) throws -> Data {
+    func processEmail(email emailData: ByteBuffer, configuration: Configuration) async throws -> ByteBuffer {
         // split email into headers and body
-        let email = String(decoding: emailData, as: Unicode.UTF8.self)
+        let email = String(buffer: emailData)
         var headerEndIndex = email.startIndex
         email.enumerateLines { line in
             if line.count == 0 {
@@ -117,7 +112,7 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
             return true
         }
         let header = email[email.startIndex..<headerEndIndex]
-        
+
         // process header
         var newHeader: String = ""
         var fromAddress: Substring.SubSequence? = nil
@@ -125,8 +120,8 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
         header.enumerateLines { line in
             let headerField = line.headerField().lowercased()
             switch headerField {
-                // SES does not allow sending messages from unverified addresses so we have to replace
-                // the message's From: header with the from address in the configuration
+            // SES does not allow sending messages from unverified addresses so we have to replace
+            // the message's From: header with the from address in the configuration
             case "from":
                 // we know there is a colon so can force this
                 let headerFieldBody = line.headerFieldBody()!
@@ -134,17 +129,18 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
                 // now see if we can replace email address from address of format "name <email@email.com>"
                 var newFromAddress = String(headerFieldBody)
                 if var emailAddressStart = newFromAddress.firstIndex(of: "<"),
-                    let emailAddressEnd = newFromAddress[emailAddressStart..<newFromAddress.endIndex].firstIndex(of: ">") {
+                    let emailAddressEnd = newFromAddress[emailAddressStart..<newFromAddress.endIndex].firstIndex(of: ">")
+                {
                     emailAddressStart = newFromAddress.index(after: emailAddressStart)
                     newFromAddress.replaceSubrange(emailAddressStart..<emailAddressEnd, with: configuration.fromAddress)
                 } else {
                     newFromAddress = configuration.fromAddress
                 }
                 newHeader += "From: \(newFromAddress)\r\n"
-                // remove return-path, sender and message-id headers
+            // remove return-path, sender and message-id headers
             case "return-path", "sender", "message-id":
                 break
-                // flag if we have found a reply-to header
+            // flag if we have found a reply-to header
             case "reply-to":
                 foundReplyTo = true
                 newHeader += "\(line)\r\n"
@@ -161,12 +157,12 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
             guard let fromAddress = fromAddress else { throw Error.noFromAddress }
             newHeader += "Reply-To:\(fromAddress)\r\n"
         }
-        
+
         // construct email from new header plus original body
         let newEmail = newHeader + email[headerEndIndex..<email.endIndex]
-        return Data(newEmail.utf8)
+        return ByteBuffer(string: newEmail)
     }
-    
+
     /// Get list of recipients to forward email to
     /// - Parameter message: SES message
     /// - Returns: returns list of recipients to forward email to
@@ -179,58 +175,78 @@ struct SESForwarderHandler: EventLoopLambdaHandler {
         }
         return list
     }
-    
+
     /// Send email to list of recipients
     /// - Parameters:
     ///   - data: Raw email data
     ///   - from: From address
     ///   - recipients: List of recipients
     /// - Returns: EventLoopFuture that'll be fulfilled when the email has been sent
-    func sendEmail(data: Data, from: String, recipients: [String], logger: Logger) -> EventLoopFuture<Void> {
-        let request = SotoSES.SES.SendRawEmailRequest(destinations: recipients, rawMessage: .init(data: data), source: from)
-        return ses.sendRawEmail(request, logger: logger).map { _ in }
+    func sendEmail(email: ByteBuffer, from: String, recipients: [String], logger: Logger) async throws {
+        _ = try await ses.sendRawEmail(
+            destinations: recipients,
+            rawMessage: .init(data: .data(email.readableBytesView)),
+            source: from,
+            logger: logger
+        )
     }
-    
+
     /// handle one message
     /// - Parameters:
     ///   - context: Lambda context
     ///   - message: SES message
     /// - Returns: EventLoopFuture for when email is sent
-    func handleMessage(context: Lambda.Context, message: AWSLambdaEvents.SES.Message, configuration: Configuration) -> EventLoopFuture<Void> {
+    func handleMessage(context: Lambda.Context, message: AWSLambdaEvents.SES.Message, configuration: Configuration) async throws {
         guard let tempS3MessageFolder = self.tempS3MessageFolder else {
-            return context.eventLoop.makeFailedFuture(Error.invalidMessageFolder)
+            throw Error.invalidMessageFolder
         }
         let recipients = getRecipients(message: message, configuration: configuration)
-        guard recipients.count > 0 else { return context.eventLoop.makeSucceededFuture(())}
-        
+        guard recipients.count > 0 else { return }
+
         context.logger.info("Email from \(message.mail.commonHeaders.from) to \(message.receipt.recipients)")
         context.logger.info("Subject \(message.mail.commonHeaders.subject ?? "")")
         if message.receipt.spamVerdict.status == .fail, configuration.blockSpam == true {
             context.logger.info("Email is spam do not forward")
-            return context.eventLoop.makeSucceededVoidFuture()
+            return
         }
         context.logger.info("Fetch email with message id \(message.mail.messageId)")
 
-        return fetchEmailContents(
+        let email = try await fetchEmailContents(
             messageId: message.mail.messageId,
             s3Folder: tempS3MessageFolder,
             logger: context.logger
-        ).flatMapThrowing { email in
-            return try self.processEmail(email: email, configuration: configuration)
-        }
-        .flatMap { email -> EventLoopFuture<Void> in
-            context.logger.info("Send email to \(recipients)")
-            return self.sendEmail(data: email, from: configuration.fromAddress, recipients: recipients, logger: context.logger)
-        }
+        )
+        let processedEmail = try await self.processEmail(email: email, configuration: configuration)
+
+        context.logger.info("Send email to \(recipients)")
+        try await self.sendEmail(email: processedEmail, from: configuration.fromAddress, recipients: recipients, logger: context.logger)
+
     }
-    
+
     /// Called by Lambda run. Calls `handleMessage` for each message in the supplied event
     func handle(context: Lambda.Context, event: In) -> EventLoopFuture<Void> {
-        configPromise.futureResult.flatMap { configuration in
-            let returnFutures: [EventLoopFuture<Void>] = event.records.map {
-                handleMessage(context: context, message: $0.ses, configuration: configuration)
+        let promise = context.eventLoop.makePromise(of: Void.self)
+        promise.completeWithTask {
+            let configuration = try await configurationLoadingTask.value
+            try await withThrowingTaskGroup(of: Result<Void, Swift.Error>.self) { group in
+                for record in event.records {
+                    group.addTask {
+                        do {
+                            return .success(try await handleMessage(context: context, message: record.ses, configuration: configuration))
+                        } catch {
+                            return .failure(error)
+                        }
+                    }
+                }
+                var results: [Result<Void, Swift.Error>] = .init()
+                while let result = try await group.next() {
+                    results.append(result)
+                }
+                for result in results {
+                    try result.get()
+                }
             }
-            return EventLoopFuture.whenAllSucceed(returnFutures, on: context.eventLoop).map { _ in }
         }
+        return promise.futureResult
     }
 }

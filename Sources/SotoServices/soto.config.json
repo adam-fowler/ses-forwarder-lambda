@@ -1,0 +1,10 @@
+{
+    "services": {
+        "s3": {
+            "operations": ["getObject"]
+        },
+        "ses": {
+            "operations": ["sendRawEmail"]
+        }
+    }
+}
